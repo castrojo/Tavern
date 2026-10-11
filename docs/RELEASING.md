@@ -32,8 +32,31 @@ The updater preserves these paths; it does not infer a migration.
 The recommended Flatpak also follows tested `main` commits through `prod`.
 This rolling channel can contain changes beyond the latest numbered release.
 Record channel versions and install results in #104 before claiming parity.
-Tags without a GitHub Release are historical source markers, not published
-releases. Do not delete or repoint them.
+ Tags without a GitHub Release are historical source markers, not published
+ releases. Do not delete or repoint them.
+
+ ## Release parity gate
+
+The Release workflow enforces release parity as the `Verify release parity`
+job, which runs after the release is published. A tag is only a stable release
+once every channel carries it: the GitHub Release with its AppImage, Flatpak
+bundle, and macOS assets, the Flatpak OCI image on ghcr.io, and the Homebrew
+cask in tuna-os/homebrew-tap.
+
+The GitHub Release and its assets are created before this job runs, so they are
+checked immediately. The Homebrew cask and the Flatpak OCI image publish
+asynchronously, so the job polls `tools/check-release-parity.py` up to 20
+minutes for them. If any channel is still missing once publishing finished, the
+job fails — a tag without an artifact on a channel is not a stable release. A
+channel that cannot be read (token scope, registry unreachable) is reported as a
+warning and does not fail the gate, so a transient read failure never blocks a
+release path.
+
+Run the gate locally against any tag:
+
+```bash
+python3 tools/check-release-parity.py --tag v0.1.64
+```
 
 ## Recover a failed promotion
 
