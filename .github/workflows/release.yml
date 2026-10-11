@@ -124,7 +124,6 @@ jobs:
       id-token: write
       attestations: write
       artifact-metadata: write
-      actions: write
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/download-artifact@v8.0.2
