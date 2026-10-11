@@ -23,6 +23,43 @@ For a sandboxed Flatpak build (requires [`just`](https://github.com/casey/just))
 just dev                  # build + install + run as Flatpak
 ```
 
+### Development profile (side-by-side installs)
+
+The meson build exposes a `profile` option (`meson_options.txt`) with two
+choices: `default` and `development`. In development mode the
+`APPLICATION_ID` becomes `org.tunaos.tavern.Devel` instead of
+`org.tunaos.tavern`, so a development build installs as a *separate*
+application that can run alongside the released Tavern without overwriting it.
+
+Set it up with:
+
+```bash
+meson setup builddir -Dprofile=development --prefix="$HOME/.local"
+ninja -C builddir install
+```
+
+Then launch the installed binary the same way `./run.sh` does on Linux:
+
+```bash
+env GSETTINGS_SCHEMA_DIR="$HOME/.local/share/glib-2.0/schemas" \
+  XDG_DATA_DIRS="$HOME/.local/share:/usr/share" \
+  "$HOME/.local/bin/tavern"
+```
+
+What changes in `development` mode (see `meson.build` and `data/meson.build`):
+
+- `APPLICATION_ID` → `org.tunaos.tavern.Devel`.
+- Icons and the desktop/metainfo metadata use a `.Devel` suffix, so the
+  launcher entry and the Settings tile are distinct from the release app.
+- The default build (`-Dprofile=default`) keeps the canonical
+  `org.tunaos.tavern` id.
+
+Why it matters: you can keep the released Tavern installed and still develop
+against `main`, launching either one independently. This is handy for testing
+a release build while iterating on development builds. The same `.Devel` id is
+what the `just dev` Flatpak path ships under, so the two development layouts
+coexist with the production Flatpak too.
+
 ## Tests
 
 Use the system Python with its PyGObject bindings. A separate Python install
