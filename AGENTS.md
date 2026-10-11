@@ -4,7 +4,7 @@ A **Homebrew client for Linux and macOS** — Python + GTK4 + libadwaita,
 shipped as the `org.tunaos.tavern` Flatpak and as a Homebrew cask.
 
 Human docs: [`README.md`](README.md), [`CONTRIBUTING.md`](CONTRIBUTING.md),
-[`docs/`](docs/) (`CACHE.md`, `CURATION.md`, `RELEASING.md`,
+[`docs/`](docs/) (`CACHE.md`, `ARCHITECTURE.md`, `CURATION.md`, `RELEASING.md`,
 `ACCESSIBILITY.md`, and `adr/`). [`docs/agents/`](docs/agents/) is about how
 hive's skills should *consume* this repo's docs; this file is about the repo
 itself.

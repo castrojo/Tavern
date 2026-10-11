@@ -98,7 +98,7 @@ ship. Translation-only PRs are welcome and do not require changes to Python.
 
 Additional maintainer guides cover the [cache lifecycle](docs/CACHE.md),
 [curation feed](docs/CURATION.md), [accessibility release pass](docs/ACCESSIBILITY.md),
-and [release process](docs/RELEASING.md).
+and [architecture overview](docs/ARCHITECTURE.md).
 
 The files under [`docs/reports/`](docs/reports/README.md) are dated historical
 verification snapshots, not maintained contributor instructions.
