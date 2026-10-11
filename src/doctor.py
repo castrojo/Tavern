@@ -31,6 +31,37 @@ class DoctorReport:
     tier: object = None
     warnings: str = ''
 
+# Display order for the Doctor list; unsupported is the least supported state.
+SEVERITY_ORDER = ('unsupported', 'error', 'warning')
+
+
+def severity_groups(issues):
+    """Group ``issues`` by severity in display order (unsupported > error > warning).
+
+    Returns ``[(key, [issue, ...]), ...]`` with empty groups skipped, ordered by
+    :data:`SEVERITY_ORDER` regardless of the order the issues arrive in. Mirrors
+    the sort ``parse_report`` applies, so the list renders grouped and ordered.
+    """
+    buckets = {key: [] for key in SEVERITY_ORDER}
+    for issue in issues:
+        buckets.setdefault(issue.severity, []).append(issue)
+    return [(key, buckets[key]) for key in SEVERITY_ORDER if buckets[key]]
+
+
+def select_after_reload(previous_content_id, issues):
+    """Choose the issue to select after a report reload.
+
+    Follows the previously selected issue by ``content_id`` when it is still
+    present (it may have moved position), otherwise falls back to the first
+    issue, or ``None`` when there is nothing to select. ``content_id`` is a
+    stable hash of title+body, so it survives a reload that reorders issues.
+    """
+    if previous_content_id is not None:
+        for issue in issues:
+            if issue.content_id == previous_content_id:
+                return issue
+    return issues[0] if issues else None
+
 
 class DoctorError(Exception):
     """The command failed without a usable diagnostic report."""

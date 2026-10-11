@@ -2,7 +2,7 @@
 from types import SimpleNamespace
 
 from tavern import doctor_page
-from tavern.doctor import parse_report
+from tavern.doctor import parse_report, DoctorReport, DoctorIssue
 
 
 def test_report_error_and_recovery(monkeypatch):
@@ -69,3 +69,97 @@ def test_runner_falls_back_only_for_unsupported_json(monkeypatch):
     assert calls == [('doctor', '--json'), ('doctor',)]
     assert result.stdout == 'Warning: Unlinked kegs'
     assert result.stderr == ''
+
+
+def _report(*issues):
+    return DoctorReport(issues=tuple(issues), raw_output='raw')
+
+
+def _titles(page):
+    titles = []
+    child = page.findings_list.get_first_child()
+    while child is not None:
+        titles.append(child.get_title())
+        child = child.get_next_sibling()
+    return titles
+
+
+def _by_title(page, title):
+    child = page.findings_list.get_first_child()
+    while child is not None:
+        if child.get_title() == title:
+            return child
+        child = child.get_next_sibling()
+    return None
+
+
+def test_list_grouped_by_severity_in_display_order():
+    page = doctor_page.TavernDoctorPage()
+    page._complete(_report(
+        DoctorIssue('warn', 'body', 'warning'),
+        DoctorIssue('unsupported', 'body', 'unsupported'),
+        DoctorIssue('error', 'body', 'error'),
+    ), None)
+    # Display order is unsupported, then error, then warning.
+    assert _titles(page) == ['unsupported', 'error', 'warn']
+
+
+def test_selection_follows_issue_when_reordered():
+    page = doctor_page.TavernDoctorPage()
+    page._complete(_report(
+        DoctorIssue('first', 'b1', 'warning'),
+        DoctorIssue('second', 'b2', 'error'),
+    ), None)
+    second = _by_title(page, 'second')
+    page.findings_list.select_row(second)
+
+    # Reload with the issues in a different order; selection follows it.
+    page._complete(_report(
+        DoctorIssue('second', 'b2', 'error'),
+        DoctorIssue('first', 'b1', 'warning'),
+    ), None)
+    selected = page.findings_list.get_selected_row()
+    assert selected is not None
+    assert selected.get_title() == 'second'
+
+
+def test_selection_dropped_and_defaults_to_first_when_resolved():
+    page = doctor_page.TavernDoctorPage()
+    page._complete(_report(
+        DoctorIssue('keep', 'b1', 'warning'),
+        DoctorIssue('gone', 'b2', 'error'),
+    ), None)
+    gone = _by_title(page, 'gone')
+    page.findings_list.select_row(gone)
+
+    # 'gone' resolved on reload: selection falls back to the first issue.
+    page._complete(_report(DoctorIssue('keep', 'b1', 'warning')), None)
+    selected = page.findings_list.get_selected_row()
+    assert selected is not None
+    assert selected.get_title() == 'keep'
+
+
+def test_detail_panels_selected_issue():
+    page = doctor_page.TavernDoctorPage()
+    page._complete(_report(DoctorIssue('Broken tap', 'Repair it now', 'error')), None)
+    assert page.detail_placeholder.get_visible() is False
+    assert page.detail_content.get_visible() is True
+    assert page.detail_title.get_label() == 'Broken tap'
+    assert page.detail_severity.get_label() == 'Error'
+    assert page.detail_body.get_label() == 'Repair it now'
+
+
+def test_detail_shows_placeholder_without_issues():
+    page = doctor_page.TavernDoctorPage()
+    page._complete(_report(), None)
+    assert page.detail_placeholder.get_visible() is True
+    assert page.detail_content.get_visible() is False
+
+
+def test_issue_title_is_not_parsed_as_markup():
+    # Regression: an issue title containing markup must render literally.
+    page = doctor_page.TavernDoctorPage()
+    page._complete(_report(DoctorIssue('<markup>', 'body', 'warning')), None)
+    row = page.findings_list.get_first_child()
+    assert row.get_title() == '<markup>'
+    assert row.get_use_markup() is False
