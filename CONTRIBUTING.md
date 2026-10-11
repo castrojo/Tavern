@@ -23,6 +23,50 @@ For a sandboxed Flatpak build (requires [`just`](https://github.com/casey/just))
 just dev                  # build + install + run as Flatpak
 ```
 
+## Debugging
+
+Logging and profiling are off by default — the `Tavern` logger stays at
+WARNING, so info/debug calls are silently discarded. Enable them with
+environment variables; they work for both the source build and the Flatpak.
+
+Run from source with `./run.sh`:
+
+```bash
+TAVERN_LOG=debug ./run.sh               # verbose logging (DEBUG level)
+TAVERN_LOG=1 ./run.sh                   # informational logging (INFO level)
+TAVERN_PROFILE=1 ./run.sh               # profile key operations (timing output)
+TAVERN_LOG_FILE=./tavern.log ./run.sh   # also write logs to a file
+```
+
+Combine them:
+
+```bash
+TAVERN_LOG=debug TAVERN_PROFILE=1 TAVERN_LOG_FILE=./tavern.log ./run.sh
+```
+
+The `Devel` Flatpak runs sandboxed and does not inherit host environment, so set
+the variables with a `flatpak override`, then run via `just dev`, which builds,
+installs, and launches `org.tunaos.tavern.Devel`:
+
+```bash
+flatpak override --env=TAVERN_LOG=debug org.tunaos.tavern.Devel
+just dev
+```
+
+`TAVERN_LOG_FILE` writes under your home directory (the app grants
+`--filesystem=home`), and you can relaunch without rebuilding with
+`flatpak run org.tunaos.tavern.Devel`.
+
+| Variable | Effect |
+| --- | --- |
+| `TAVERN_LOG=1` / `info` | Enable informational logging (INFO level) |
+| `TAVERN_LOG=debug` | Enable verbose logging (DEBUG level) |
+| `TAVERN_PROFILE=1` | Enable performance profiling — `@profile`-decorated operations log wall-clock time |
+| `TAVERN_LOG_FILE=path` | Also write logs to the given file (captures DEBUG and above) |
+
+Logs are written to stderr as `HH:MM:SS.mmm [LEVEL] name: message`. Profiling
+output uses the `perf` logger and only appears when `TAVERN_PROFILE=1` is set.
+
 ## Tests
 
 Use the system Python with its PyGObject bindings. A separate Python install
