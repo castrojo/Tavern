@@ -9,6 +9,7 @@ from tavern.application import TavernApplication
 from tavern.window import TavernWindow
 from tavern.backend import Package, BrewBackend
 from tavern.task_manager import TaskManager, TaskStatus
+from tavern.page_factory import PageFactory
 
 # ─── Mock Gio.Settings ────────────────────────────────────────────────────────
 
@@ -76,6 +77,9 @@ def test_window_workflows(tmp_path, monkeypatch):
     
     win = TavernWindow(application=app)
     assert win is not None
+    assert isinstance(win.page_factory, PageFactory)
+    assert win.page_factory.backend is win.backend
+    assert win.page_factory.task_manager is win.task_manager
     backend_reload_calls = []
     monkeypatch.setattr(win.backend, 'refresh_installed_async', lambda: backend_reload_calls.append(True))
     
