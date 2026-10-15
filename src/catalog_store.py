@@ -1,4 +1,5 @@
-# Copyright 2025 Tavern Contributors licensed under the MPL-2.0
+# catalog_store.py - Thread-safe owner of backend catalog and package state
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Thread-safe owner of the backend catalog and package state.
 
 Historically the ``BrewBackend`` facade spread its mutable state across several

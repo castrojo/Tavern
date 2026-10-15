@@ -1,4 +1,5 @@
-# Copyright 2025 Tavern Contributors licensed under the MPL-2.0
+# test_catalog_store.py
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Construction and contract tests for :class:`CatalogStore`.
 
 The store is deliberately free of any ``gi``/GObject dependency so these tests
