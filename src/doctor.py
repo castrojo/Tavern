@@ -144,19 +144,28 @@ def _accepts_unindented_items(cue: str) -> bool:
     return any(lower.endswith(suffix) for suffix in _UNINDENTED_DATA_CUE)
 
 
+# Shell syntax means the printed line is more than one plain argv; such a step stays copy-only.
+_SHELL_SYNTAX = re.compile(r'[;&|<>`$(){}*?~\'"\\]')
+
+
 def _parse_fix_step(trimmed: str):
     tokens = trimmed.split()
     needs_admin = bool(tokens) and tokens[0] == 'sudo'
     if needs_admin:
         tokens = tokens[1:]
     # Drop a leading `env` and any KEY=VALUE assignments that merely set up the command.
+    has_env_prefix = False
     while tokens and (tokens[0] == 'env' or '=' in tokens[0]):
         tokens = tokens[1:]
+        has_env_prefix = True
     if not tokens or tokens[0] not in _KNOWN_EXECUTABLES:
         return None
     executable = tokens[0]
     arguments = None
-    if executable == 'brew' and not needs_admin and len(tokens) > 1:
+    # Only a plain `brew ...` argv is extractable: running it without its env prefix or with shell
+    # syntax split into literal arguments would not be the command brew printed.
+    if (executable == 'brew' and not needs_admin and not has_env_prefix and len(tokens) > 1
+            and not _SHELL_SYNTAX.search(trimmed)):
         arguments = tuple(tokens[1:])
     return DoctorFixStep(display_command=trimmed, arguments=arguments, needs_admin=needs_admin)
 

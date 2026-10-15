@@ -183,6 +183,15 @@ def test_external_tool_command_is_copy_only():
     assert block.is_runnable is False
 
 
+def test_brew_line_with_shell_syntax_or_env_prefix_is_copy_only():
+    for line in ('brew install foo && rm -rf ~', 'brew link --overwrite $(brew --prefix)/x',
+                 'HOMEBREW_NO_INSTALL_FROM_API=1 brew update'):
+        block = _issue(f'Fix it.\n  {line}\n').blocks[0]
+        assert block.type == 'command', line
+        assert block.value[0].arguments is None, line
+        assert block.is_runnable is False, line
+
+
 def test_stray_command_without_intro_opens_a_command_block():
     # A command with no caption intro in the body would be lost to prose; keep it so the fix is not dropped.
     issue = doctor.parse_report('Warning: Setup\nRun this first.\n  git -C /opt/homebrew stash\n', 1).issues[0]
