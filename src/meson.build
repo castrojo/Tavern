@@ -73,6 +73,7 @@ tavern_sources = [
   'package.py',
   'taps.py',
   'media.py',
+  'url_security.py',
   'backend_icons.py',
   'git_forge.py',
   'package_tile.py',
