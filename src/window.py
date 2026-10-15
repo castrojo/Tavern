@@ -12,6 +12,7 @@ from gi.repository import Adw, Gtk, Gio, GLib, GObject
 from .backend import BrewBackend
 from .task_manager import TaskManager
 from .logging_util import get_logger
+from .page_factory import PageFactory
 
 _ = gettext.gettext
 
@@ -25,8 +26,6 @@ from .installed_page import TavernInstalledPage  # noqa: F401
 from .tap_page import TavernTapPage            # noqa: F401
 from .doctor_page import TavernDoctorPage      # noqa: F401
 from .global_progress import TavernGlobalProgress # noqa: F401
-from .brewfile_page import TavernBrewfilePage  # noqa: F401
-from .version_history_dialog import TavernVersionHistoryDialog  # noqa: F401
 
 
 @Gtk.Template(resource_path='/org.tunaos.tavern/window.ui')
@@ -93,12 +92,14 @@ class TavernWindow(Adw.ApplicationWindow):
         self._outdated_count = 0  # Track current outdated package count
         self._toasted_outdated_count = None  # Last count announced via toast
         
-        # Wire pages to backend
+        # Resolve page dependencies through the factory so the window stays a
+        # view-layout + navigation coordinator rather than a page factory.
         pages_start = time.perf_counter()
-        self.browse_page.set_backend(self.backend)
-        self.search_page.set_backend(self.backend)
-        self.installed_page.set_backend_and_manager(self.backend, self.task_manager)
-        self.tap_page.set_backend(self.backend)
+        self.page_factory = PageFactory(self.backend, self.task_manager)
+        self.page_factory.wire_pages(
+            self.browse_page, self.search_page,
+            self.installed_page, self.tap_page,
+        )
 
         # Wire package open signal from pages
         self.browse_page.connect('package-activated', self._on_package_activated)
@@ -354,12 +355,7 @@ class TavernWindow(Adw.ApplicationWindow):
 
     def _on_package_activated(self, page, package):
         _log.debug('Package activated: %s (%s)', package.name, package.pkg_type)
-        from .package_details import TavernPackageDetails
-        dialog = TavernPackageDetails(
-            package=package,
-            backend=self.backend,
-            task_manager=self.task_manager,
-        )
+        dialog = self.page_factory.create_package_details(package)
         dialog.connect('package-changed', self._on_package_changed)
         dialog.connect('package-history-requested', self._on_package_history_requested)
         dialog.connect('package-activated', self._on_package_activated)
@@ -495,8 +491,7 @@ class TavernWindow(Adw.ApplicationWindow):
                      allow_legacy_install=True)
 
     def _on_maintenance(self, *_args):
-        from .maintenance_page import MaintenancePage
-        self.navigation_view.push(MaintenancePage(self.task_manager))
+        self.navigation_view.push(self.page_factory.create_maintenance_page())
 
     def _on_remove_requested(self, page, package):
         _log.info('Remove requested from page: %s (%s)', package.name, package.pkg_type)
@@ -505,10 +500,7 @@ class TavernWindow(Adw.ApplicationWindow):
     def _on_package_history_requested(self, card, package):
         """Open version history dialog for a package."""
         _log.debug('Package history requested: %s', package.name)
-        version_dialog = TavernVersionHistoryDialog(
-            package=package,
-            backend=self.backend,
-        )
+        version_dialog = self.page_factory.create_version_history(package)
         version_dialog.connect('pin-version', self._on_pin_version_requested)
         self.navigation_view.push(version_dialog)
 
@@ -633,9 +625,7 @@ class TavernWindow(Adw.ApplicationWindow):
         title = title.capitalize()
         
         # Create brewfile page
-        from .brewfile_page import TavernBrewfilePage
-        brewfile_page = TavernBrewfilePage()
-        brewfile_page.set_backend_and_manager(self.backend, self.task_manager)
+        brewfile_page = self.page_factory.create_brewfile_page()
         
         # Connect signals
         brewfile_page.connect('package-activated', self._on_package_activated)
