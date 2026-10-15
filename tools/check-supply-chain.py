@@ -6,7 +6,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TARGETS = [ROOT / '.github' / 'workflows' / 'release.yml', ROOT / 'org.tunaos.tavern.json']
+TARGETS = [ROOT / '.github' / 'workflows' / 'release.yml',
+          ROOT / 'org.tunaos.tavern.json']
+USES_REF_RE = re.compile(r'^\s*(?:-\s+)?uses:\s*\S+@(\S+)')
+SHA40_RE = re.compile(r'[0-9a-f]{40}')
 
 
 def main():
@@ -23,6 +26,15 @@ def main():
     manifest = (ROOT / 'org.tunaos.tavern.json').read_text()
     if '"tag": "v0.22.2"' in manifest and '"commit":' not in manifest:
         errors.append('org.tunaos.tavern.json: tagged git source needs a commit')
+    for path in sorted(ROOT.glob('.github/workflows/*.yml')):
+        for lineno, line in enumerate(path.read_text().splitlines(), 1):
+            match = USES_REF_RE.match(line)
+            if not match:
+                continue
+            ref = match.group(1)
+            if not SHA40_RE.fullmatch(ref):
+                errors.append(
+                    f'{path.relative_to(ROOT)}:{lineno}: unpinned uses ref "@{ref}"')
     if errors:
         print('\n'.join(errors))
         return 1
