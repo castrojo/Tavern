@@ -108,7 +108,7 @@ jobs:
       options: --privileged
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: flatpak/flatpak-github-actions/flatpak-builder@aa777012a985fe1b1fd3e66ea2173609cf0c9a70 # v6.8
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
         with:
           bundle: Tavern-Linux.flatpak
           manifest-path: org.tunaos.tavern.json
@@ -137,7 +137,7 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Generate SPDX SBOM
-        uses: anchore/sbom-action@fffec3d851af758d56fee099cf3fbf8aa8779843 # v0.24.3
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           path: .
           format: spdx-json
@@ -156,7 +156,7 @@ jobs:
           subject-checksums: dist/SHA256SUMS
           sbom-path: dist/Tavern.spdx.json
       - name: Publish one release
-        uses: softprops/action-gh-release@e598afbe1493e6b1bafb1f389cabb956eab91231 # v3.0.3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           files: dist/*
           generate_release_notes: true
