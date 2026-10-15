@@ -13,6 +13,8 @@ surfaced as a warning, does not fail).
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from loader import load_module
 
@@ -167,3 +169,15 @@ def test_collect_reports_oci_unknown_when_query_errors(monkeypatch):
 
     present = check_release_parity.collect("v0.1.64", "0.1.64")
     assert present["flatpak_oci"] is UNKNOWN
+
+
+@pytest.mark.parametrize(
+    "tags, expected",
+    [
+        (["latest", "latest-x86_64", "v0.1.64-x86_64"], True),
+        (["0.1.64"], True),
+        (["latest", "v0.1.63-x86_64", "v0.1.640-x86_64"], False),
+    ],
+)
+def test_oci_matches_per_arch_release_tags(tags, expected):
+    assert check_release_parity._oci_has_release(tags, "v0.1.64", "0.1.64") is expected

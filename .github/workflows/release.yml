@@ -172,7 +172,7 @@ jobs:
     name: Verify release parity
     needs: publish
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: read
@@ -188,13 +188,13 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           echo "Verifying $TAG reached every channel (GitHub Release, AppImage, Flatpak, macOS, Homebrew cask, Flatpak OCI)."
           out=""
-          for attempt in $(seq 1 30); do
+          for attempt in $(seq 1 60); do
             if out="$(python3 tools/check-release-parity.py --tag "$TAG" 2>&1)"; then
               echo "$out"
               echo "Release parity verified for $TAG: every channel carries it."
               exit 0
             fi
-            echo "Attempt $attempt/30: parity not yet complete (Homebrew cask and Flatpak OCI publish async). Retrying in 20s."
+            echo "Attempt $attempt/60: parity not yet complete (Homebrew cask and Flatpak OCI publish async). Retrying in 20s."
             echo "$out" | sed 's/^/  /'
             sleep 20
           done

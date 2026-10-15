@@ -110,7 +110,7 @@ def cask_version(repo=TAP_REPO, path=TAP_CASK):
         [
             "gh",
             "api",
-            f"contents/{repo}/{path}?ref={branch}",
+            f"repos/{repo}/contents/{path}?ref={branch}",
             "--jq",
             ".content",
         ],
@@ -126,8 +126,8 @@ def cask_version(repo=TAP_REPO, path=TAP_CASK):
     return match.group(1) if match else None
 
 
-def flatpak_oci_tags(repo=REPO, package=FLATPAK_PACKAGE):
-    """Return the version tags published to ghcr.io, or None if unreadable.
+def flatpak_oci_tags(org=REPO.split("/")[0], package=FLATPAK_PACKAGE):
+    """Return the tags published to ghcr.io/<org>/<package>, or None if unreadable.
 
     A 200 with no matching tag means the artifact is absent; a non-2xx response
     (scope, registry down) is inconclusive and returns None.
@@ -136,9 +136,9 @@ def flatpak_oci_tags(repo=REPO, package=FLATPAK_PACKAGE):
         [
             "gh",
             "api",
-            f"repos/{repo}/registry/packages/{package}/versions?per_page=100",
+            f"orgs/{org}/packages/container/{package}/versions?per_page=100",
             "--jq",
-            ".[].metadata.tags[]",
+            ".[].metadata.container.tags[]",
         ],
         check=False,
     )
@@ -152,6 +152,16 @@ def flatpak_oci_tags(repo=REPO, package=FLATPAK_PACKAGE):
     return tags
 
 
+def _oci_has_release(oci_tags, tag, version):
+    """True if an OCI tag carries this release.
+
+    The shared publisher pushes per-arch tags (``v0.1.64-x86_64``), so accept
+    the bare tag/version or either with an ``-<arch>`` suffix.
+    """
+    names = (tag, version)
+    return any(t in names or any(t.startswith(f"{n}-") for n in names) for t in oci_tags)
+
+
 def collect(tag, version):
     """Gather live channel state for a tag. Pure keys, network-backed values."""
     asset_names = release_asset_names(tag)
@@ -159,7 +169,7 @@ def collect(tag, version):
     oci_tags = flatpak_oci_tags()
 
     cask_status = cask == version if cask is not None else UNKNOWN
-    oci_status = (tag in oci_tags or version in oci_tags) if oci_tags is not None else UNKNOWN
+    oci_status = _oci_has_release(oci_tags, tag, version) if oci_tags is not None else UNKNOWN
 
     return {
         "github_release": release_exists(tag),
