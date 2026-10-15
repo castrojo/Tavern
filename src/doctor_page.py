@@ -121,13 +121,9 @@ class TavernDoctorPage(Adw.Bin):
                       'unsupported': _('Unsupported configuration')}
         for _key, group in severity_groups(report.issues):
             for issue in group:
-                row = Adw.ExpanderRow(title=issue.title, subtitle=severities[issue.severity],
-                                      use_markup=False)
-                body = Gtk.Label(
-                    label=issue.body, wrap=True, selectable=True, xalign=0,
-                    margin_top=12, margin_bottom=12, margin_start=18, margin_end=18,
-                )
-                row.add_row(body)
+                # The body renders in the detail pane; the list row only names the issue.
+                row = Adw.ActionRow(title=issue.title, subtitle=severities[issue.severity],
+                                    use_markup=False)
                 self.findings_list.append(row)
                 self._rows[row] = issue
         self.findings_list.set_visible(bool(report.issues))
