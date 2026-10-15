@@ -5,7 +5,7 @@ template $TavernDoctorPage: Adw.Bin {
   ScrolledWindow {
     hscrollbar-policy: never;
     Adw.Clamp {
-      maximum-size: 850;
+      maximum-size: 1000;
       margin-start: 18;
       margin-end: 18;
       margin-top: 24;
@@ -58,10 +58,77 @@ template $TavernDoctorPage: Adw.Bin {
           selectable: true;
           styles ["error"]
         }
-        ListBox findings_list {
-          visible: false;
-          selection-mode: none;
-          styles ["boxed-list"]
+        Box {
+          orientation: horizontal;
+          spacing: 18;
+          halign: fill;
+          hexpand: true;
+          Box {
+            orientation: vertical;
+            width-request: 240;
+            hexpand: false;
+            ScrolledWindow {
+              hscrollbar-policy: never;
+              valign: start;
+              Adw.Clamp {
+                maximum-size: 380;
+                ListBox findings_list {
+                  selection-mode: single;
+                  valign: start;
+                  styles ["boxed-list"]
+                }
+              }
+            }
+          }
+          Box {
+            orientation: vertical;
+            hexpand: true;
+            ScrolledWindow {
+              hscrollbar-policy: never;
+              Adw.Clamp {
+                maximum-size: 600;
+                Box {
+                  orientation: vertical;
+                  spacing: 12;
+                  margin-start: 18;
+                  margin-end: 18;
+                  margin-top: 18;
+                  margin-bottom: 18;
+                  Label detail_placeholder {
+                    label: _("Select an issue to see its details");
+                    xalign: 0;
+                    wrap: true;
+                    styles ["dim-label"]
+                  }
+                  Box detail_content {
+                    orientation: vertical;
+                    spacing: 12;
+                    visible: false;
+                    Label detail_title {
+                      xalign: 0;
+                      wrap: true;
+                      styles ["title-3"]
+                    }
+                    Label detail_severity {
+                      xalign: 0;
+                      styles ["caption"]
+                    }
+                    ScrolledWindow {
+                      hscrollbar-policy: never;
+                      min-content-height: 200;
+                      Label detail_body {
+                        xalign: 0;
+                        wrap: true;
+                        selectable: true;
+                        margin-top: 6;
+                        margin-bottom: 6;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
         Expander raw_expander {
           label: _("Raw Output");
