@@ -70,6 +70,7 @@ tavern_sources = [
   'brewfile_document.py',
   'cache_policy.py',
   'catalog_policy.py',
+  'catalog_store.py',
   'package.py',
   'taps.py',
   'media.py',
