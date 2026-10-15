@@ -1,31 +1,24 @@
-# Pages are instantiated by a PageFactory, not the window
+# Pages come from a PageFactory, not the window
 
-Every page and dialog that needs `backend` or `task_manager` state was
-manually instantiated and dependency-injected by `window.py`. The window
-therefore knew every page's constructor signature and grew as a "god-object
-factory" instead of a view-layout + navigation coordinator, new pages required
-`window.py` edits, and pages could not be tested without constructing the
-backend and task manager.
+Before this change, `window.py` made every page and dialog that needs
+`backend` or `task_manager` state. The window had to know the constructor of
+each page. Each new page needed a change in `window.py`. A test of a page
+needed a real backend and a real task manager.
 
-**Decision.** `src/page_factory.py` owns page/dialog construction and
-dependency resolution. It holds the shared `backend` and `task_manager` and
-exposes `wire_pages()` for the template-built pages (`browse`, `search`,
-`installed`, `tap`) and `create_package_details()`, `create_version_history()`,
-`create_brewfile_page()`, and `create_maintenance_page()` for the pages built
-on demand. `TavernWindow` creates one `PageFactory` in `__init__` and delegates
-to it; it no longer imports or constructs page modules directly.
+**Decision.** `src/page_factory.py` makes pages and dialogs and gives them
+their dependencies. It holds the shared `backend` and `task_manager`.
+`wire_pages()` connects the pages that `window.blp` makes (`browse`, `search`,
+`installed`, `tap`). `create_package_details()`, `create_version_history()`,
+`create_brewfile_page()`, and `create_maintenance_page()` make the other
+pages when the user opens them. `TavernWindow` makes one `PageFactory` in
+`__init__` and sends these calls to it.
 
-**Why this way.** The window stays a coordinator that only connects page →
-window signals and pushes returned pages onto the navigation stack. Adding a
-page dependency changes only the factory and the page, never `window.py`.
-Template-built pages cannot be constructed here, so they are wired rather than
-created; dynamic pages are created by factory methods. Page modules are imported
-lazily inside the factory, so their GTypes register when a page is first built
-— the same runtime points they are used at, and the static pages that appear in
-`window.blp` still register at window import time.
+**Reasons.** The window only connects page signals and pushes pages onto the
+navigation stack. A new page dependency changes only the factory and the page.
+The factory cannot make the pages in `window.blp`, thus it only connects them.
+The factory imports each page module when it first makes that page. The pages
+in `window.blp` still load when `window.py` loads.
 
-**Alternatives considered.** A service locator / context object that pages
-request from is more opaque and harder to test than explicit factory methods;
-for the small, fixed set of page types the explicit methods are clearer. Making
-`PageFactory` a `GObject.Object` adds signal/property machinery it does not
-need — a plain class is simpler and trivially unit-testable.
+**Alternatives.** We did not use a service locator. It hides the dependencies
+of a page, and it is more difficult to test. We did not make `PageFactory` a
+`GObject.Object`. The factory does not need signals or properties.
