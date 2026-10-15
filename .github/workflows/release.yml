@@ -167,3 +167,37 @@ jobs:
         run: |
           gh workflow run publish-flatpak.yml --ref "$GITHUB_REF_NAME"
           gh workflow run update-homebrew-tap.yml --ref main -f release_tag="$GITHUB_REF_NAME"
+
+  parity:
+    name: Verify release parity
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Wait for all channels and verify parity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          echo "Verifying $TAG reached every channel (GitHub Release, AppImage, Flatpak, macOS, Homebrew cask, Flatpak OCI)."
+          out=""
+          for attempt in $(seq 1 60); do
+            if out="$(python3 tools/check-release-parity.py --tag "$TAG" 2>&1)"; then
+              echo "$out"
+              echo "Release parity verified for $TAG: every channel carries it."
+              exit 0
+            fi
+            echo "Attempt $attempt/60: parity not yet complete (Homebrew cask and Flatpak OCI publish async). Retrying in 20s."
+            echo "$out" | sed 's/^/  /'
+            sleep 20
+          done
+          echo "Release parity check timed out waiting for all channels." >&2
+          echo "$out" | sed 's/^/  /' >&2
+          exit 1

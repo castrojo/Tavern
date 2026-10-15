@@ -35,6 +35,28 @@ Record channel versions and install results in #104 before claiming parity.
 Tags without a GitHub Release are historical source markers, not published
 releases. Do not delete or repoint them.
 
+## Release parity gate
+
+The `Verify release parity` job runs after the Release workflow publishes the
+release. A tag is a stable release only when each channel has it:
+
+- the GitHub Release, with the AppImage, Flatpak bundle, and macOS assets
+- the Flatpak OCI image on ghcr.io
+- the Homebrew cask in tuna-os/homebrew-tap
+
+The job examines the GitHub Release and its assets at once. Other workflows
+publish the cask and the OCI image later. Thus the job runs
+`tools/check-release-parity.py` again and again for a maximum of 20 minutes.
+If a channel does not have the tag after that time, the job fails. If the job
+cannot read a channel (token scope, registry down), it shows a warning and
+does not fail.
+
+Run the gate locally against any tag:
+
+```bash
+python3 tools/check-release-parity.py --tag v0.1.64
+```
+
 ## Recover a failed promotion
 
 Inspect `git log main..origin/prod` first. Merge production-only fixes into a
