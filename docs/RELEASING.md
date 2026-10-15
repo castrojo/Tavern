@@ -37,20 +37,19 @@ releases. Do not delete or repoint them.
 
 ## Release parity gate
 
-The Release workflow enforces release parity as the `Verify release parity`
-job, which runs after the release is published. A tag is only a stable release
-once every channel carries it: the GitHub Release with its AppImage, Flatpak
-bundle, and macOS assets, the Flatpak OCI image on ghcr.io, and the Homebrew
-cask in tuna-os/homebrew-tap.
+The `Verify release parity` job runs after the Release workflow publishes the
+release. A tag is a stable release only when each channel has it:
 
-The GitHub Release and its assets are created before this job runs, so they are
-checked immediately. The Homebrew cask and the Flatpak OCI image publish
-asynchronously, so the job polls `tools/check-release-parity.py` up to 20
-minutes for them. If any channel is still missing once publishing finished, the
-job fails — a tag without an artifact on a channel is not a stable release. A
-channel that cannot be read (token scope, registry unreachable) is reported as a
-warning and does not fail the gate, so a transient read failure never blocks a
-release path.
+- the GitHub Release, with the AppImage, Flatpak bundle, and macOS assets
+- the Flatpak OCI image on ghcr.io
+- the Homebrew cask in tuna-os/homebrew-tap
+
+The job examines the GitHub Release and its assets at once. Other workflows
+publish the cask and the OCI image later. Thus the job runs
+`tools/check-release-parity.py` again and again for a maximum of 20 minutes.
+If a channel does not have the tag after that time, the job fails. If the job
+cannot read a channel (token scope, registry down), it shows a warning and
+does not fail.
 
 Run the gate locally against any tag:
 
