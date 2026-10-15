@@ -58,13 +58,15 @@ class PageFactory:
         )
 
     def create_brewfile_page(self):
-        """Create a fresh Brewfile page.
+        """Create a fresh Brewfile page wired to the backend and task manager.
 
         Tab management (unique names, stack insertion) stays in window.py —
         the factory only produces the page.
         """
         from .brewfile_page import TavernBrewfilePage
-        return TavernBrewfilePage()
+        page = TavernBrewfilePage()
+        page.set_backend_and_manager(self.backend, self.task_manager)
+        return page
 
     def create_maintenance_page(self):
         """Create the on-demand maintenance page."""

@@ -95,8 +95,10 @@ def test_create_version_history_injects_backend_only(monkeypatch):
     assert dialog.kwargs == {'package': pkg, 'backend': 'BACKEND'}
 
 
-def test_create_brewfile_page_takes_no_dependencies(monkeypatch):
+def test_create_brewfile_page_wires_backend_and_manager(monkeypatch):
     FakeBF = _inject_fake_page(monkeypatch, 'brewfile_page', 'TavernBrewfilePage')
+    FakeBF.set_backend_and_manager = (
+        lambda self, backend, task_manager: setattr(self, 'wired', (backend, task_manager)))
     factory = PageFactory('BACKEND', 'TM')
 
     page = factory.create_brewfile_page()
@@ -104,6 +106,7 @@ def test_create_brewfile_page_takes_no_dependencies(monkeypatch):
     assert isinstance(page, FakeBF)
     assert page.args == ()
     assert page.kwargs == {}
+    assert page.wired == ('BACKEND', 'TM')
 
 
 def test_create_maintenance_page_passes_task_manager(monkeypatch):
