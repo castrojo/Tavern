@@ -69,5 +69,17 @@ history. Extracted formulae receive no automatic security fixes; you own their
 maintenance. Prefer a maintained versioned formula when one exists.
 This action does not pin the installed version or install casks.
 
+## First-run and environment
+
+Tavern checks for Homebrew on startup.
+A persistent banner appears when Homebrew is absent.
+The banner opens a dialog to install Homebrew in a host terminal emulator.
+The terminal allows `sudo` password input.
+The dialog also offers a copy button for the install command, a documentation link, and a retry button.
+
+Tavern adopts **Bluefin parity** for `PATH` order.
+System binary directories always precede Homebrew directories.
+This protects system tools from Homebrew packages.
+Tavern enforces this order for subprocess calls, Flatpak host execution, and development runs.
 Command and report contracts follow [Homebrew 7.0.0](https://github.com/Homebrew/brew/tree/7.0.0/Library/Homebrew).
 See also the [Homebrew manual](https://docs.brew.sh/Manpage).
