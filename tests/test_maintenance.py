@@ -135,3 +135,52 @@ def test_completed_read_does_not_reopen_closed_dialog(monkeypatch):
     assert cancelled == [True]
     assert not queued
     assert not dialog.get_response_enabled('confirm')
+
+
+def test_maintenance_page_has_redesigned_structure_and_icons():
+    page = maintenance_page.MaintenancePage(SimpleNamespace())
+    assert page.scan_button.get_icon_name() == 'security-high-symbolic'
+    assert page.services_button.get_icon_name() == 'view-refresh-symbolic'
+    assert page.view_output_button.get_icon_name() == 'text-x-generic-symbolic'
+    assert page.security_status_row is not None
+    assert page.security_status_icon.get_icon_name() == 'security-high-symbolic'
+    page.formula_entry.set_text('ripgrep')
+    page.version_entry.set_text('14.1.0')
+    assert page.formula_entry.get_text() == 'ripgrep'
+    assert page.version_entry.get_text() == '14.1.0'
+
+
+def test_service_rows_render_structured_status():
+    page = maintenance_page.MaintenancePage(SimpleNamespace())
+    page._show_services(SimpleNamespace(stderr=''), [
+        {'name': 'postgresql@17', 'status': 'started'},
+        {'name': 'redis', 'status': 'stopped'},
+    ])
+    row = page.services_list.get_first_child()
+    assert row is not None
+    assert row.get_title() == 'postgresql@17'
+    assert row.get_subtitle() == 'started'
+
+
+def test_empty_service_list_renders_placeholder_row():
+    page = maintenance_page.MaintenancePage(SimpleNamespace())
+    page._show_services(SimpleNamespace(stderr=''), [])
+    row = page.services_list.get_first_child()
+    assert row is not None
+    assert row.get_title() == 'No user services found'
+
+
+def test_security_scan_renders_structured_findings():
+    page = maintenance_page.MaintenancePage(SimpleNamespace())
+    page._show_scan(SimpleNamespace(stdout='{}', stderr='', returncode=0), {
+        'findings': [{
+            'formula': 'openssl@3',
+            'version': '3.0.0',
+            'vulnerabilities': [{'id': 'CVE-2023-1234', 'severity': 'High', 'summary': 'Buffer overflow', 'fixed_versions': ['3.0.1']}],
+            'patched': []
+        }],
+        'skipped_formulae': []
+    })
+    row = page.security_list.get_first_child()
+    assert row is not None
+    assert 'CVE-2023-1234' in row.get_title()
