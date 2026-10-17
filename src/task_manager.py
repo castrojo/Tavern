@@ -14,6 +14,7 @@ gi.require_version('Adw', '1')
 
 from gi.repository import GLib, GObject
 from .logging_util import get_logger, profile, log_timing
+from .backend_contracts import PackageStateBackend
 
 _log = get_logger('task_manager')
 
@@ -199,7 +200,7 @@ class TaskManager(GObject.Object):
         'task-finished': (GObject.SignalFlags.RUN_LAST, None, (object,)),
     }
 
-    def __init__(self, backend, **kwargs):
+    def __init__(self, backend: PackageStateBackend, **kwargs):
         super().__init__(**kwargs)
         self._backend = backend
         self._tasks = []           # all tasks (recent history + active)
@@ -438,21 +439,13 @@ class TaskManager(GObject.Object):
         task._set_failed(detail)
 
     def _update_package_state(self, task):
-        """Update the Package object + backend installed sets after a successful op."""
+        """Update package state through the backend's public contract."""
         backend = self._backend
         for pkg in task.packages:
             if task.operation in (TaskOperation.INSTALL, TaskOperation.UPGRADE):
-                pkg.installed = True
-                if pkg.pkg_type == 'formula':
-                    backend._installed_formulae.add(pkg.name)
-                else:
-                    backend._installed_casks.add(pkg.name)
+                backend.set_package_installed(pkg, True)
             elif task.operation == TaskOperation.REMOVE:
-                pkg.installed = False
-                if pkg.pkg_type == 'formula':
-                    backend._installed_formulae.discard(pkg.name)
-                else:
-                    backend._installed_casks.discard(pkg.name)
+                backend.set_package_installed(pkg, False)
 
     def _update_active_count(self):
         count = sum(1 for t in self._tasks if t.is_active)

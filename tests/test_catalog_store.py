@@ -55,6 +55,17 @@ def test_set_installed_replaces_both_sets():
     assert store.get_installed_formulae() == {"d"}
     assert store.get_installed_casks() == {"e", "f"}
 
+def test_update_installed_changes_one_package_atomically():
+    store = CatalogStore()
+    store.set_installed({"git"}, {"firefox"})
+
+    store.update_installed("formula", "ripgrep", True)
+    store.update_installed("cask", "firefox", False)
+
+    assert store.get_installed_formulae() == {"git", "ripgrep"}
+    assert store.get_installed_casks() == set()
+
+
 
 def test_pinned_roundtrip_and_is_pinned():
     store = CatalogStore()

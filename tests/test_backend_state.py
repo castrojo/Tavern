@@ -52,3 +52,20 @@ def test_installed_names_is_immutable_snapshot(tmp_path, monkeypatch):
     backend._installed_formulae.add('other')
     assert 'other' not in snapshot
     assert backend.installed_names('flatpak') == frozenset()
+
+def test_set_package_installed_updates_model_and_store(tmp_path, monkeypatch):
+    from gi.repository import GLib
+    from tavern.backend import BrewBackend
+    from tavern.package import Package
+
+    monkeypatch.setattr(GLib, 'get_user_cache_dir', lambda: str(tmp_path))
+    backend = BrewBackend()
+    package = Package({'name': 'ripgrep'}, 'formula')
+
+    backend.set_package_installed(package, True)
+    assert package.installed is True
+    assert backend.installed_names('formula') == frozenset({'ripgrep'})
+
+    backend.set_package_installed(package, False)
+    assert package.installed is False
+    assert backend.installed_names('formula') == frozenset()

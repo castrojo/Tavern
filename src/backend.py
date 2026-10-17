@@ -104,6 +104,11 @@ class BrewBackend(TapsMixin, MediaMixin, CacheMixin, RemoteMixin, StateMixin, Ui
     def get_packages_for_tap(self, tap_name):
         return self._tap_packages.get(tap_name, [])
 
+    def set_package_installed(self, package, installed):
+        """Update a package model and the shared installed-package catalog."""
+        package.installed = installed
+        self._store.update_installed(package.pkg_type, package.name, installed)
+
     # -- store-backed catalog + state (stage 1 of tuna-os/Tavern#172) --------
     # These delegate to the single CatalogStore so it is the genuine owner. The
     # mixin methods read/write self._formulae, self._pinned, etc. unchanged; they

@@ -144,6 +144,22 @@ class TestTaskManager:
         assert task.package is pkg
         assert task.operation == TaskOperation.INSTALL
 
+    def test_update_package_state_uses_public_backend_contract(self, pkg):
+        updates = []
+
+        class Backend:
+            def set_package_installed(self, package, installed):
+                package.installed = installed
+                updates.append((package, installed))
+
+        manager = TaskManager(Backend())
+        task = Task(pkg, TaskOperation.INSTALL)
+
+        manager._update_package_state(task)
+
+        assert updates == [(pkg, True)]
+        assert pkg.installed is True
+
     def test_install_convenience(self, mgr, pkg):
         task = mgr.install(pkg)
         assert task.operation == TaskOperation.INSTALL

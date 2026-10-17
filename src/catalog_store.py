@@ -66,6 +66,19 @@ class CatalogStore:
             self._installed_formulae = set(formulae)
             self._installed_casks = set(casks)
 
+    def update_installed(self, pkg_type, name, installed):
+        """Atomically add or remove one package from installed state."""
+        with self._lock:
+            target = (
+                self._installed_formulae
+                if pkg_type == 'formula'
+                else self._installed_casks
+            )
+            if installed:
+                target.add(name)
+            else:
+                target.discard(name)
+
     def get_installed_formulae(self):
         with self._lock:
             return self._installed_formulae
