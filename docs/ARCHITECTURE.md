@@ -158,6 +158,10 @@ state. `_icon_lock` protects the map of icon downloads in progress.
 | `application.py` | application | The `Adw.Application`, command-line and `brew://` links, the GNOME search action, and the cache refresh thread. |
 | `window.py` | UI | `TavernWindow`. It owns `BrewBackend` and `TaskManager`, connects page signals, and shows toasts and badges. |
 | `page_factory.py` | UI | `PageFactory`. It makes pages and dialogs with their dependencies. |
+| `package_details.py` | UI | Package presentation and user actions; delegates asset requests, README transforms, and task signal lifecycle. |
+| `asset_loader.py` | UI/backend boundary | Coordinates icon and screenshot requests and drops stale page callbacks. |
+| `readme_renderer.py` | presentation | Pure README preview, HTML, base-URI, and install-count transformations. |
+| `task_binding.py` | operations/UI boundary | Owns task signal connection lifecycle for package details. |
 | `backend.py` | backend | The `BrewBackend` facade. |
 | `catalog_store.py` | backend | `CatalogStore`. It owns catalog and package state. |
 | `backend_ui.py` | backend | `UiMixin`: catalog load, search, and progress properties. |

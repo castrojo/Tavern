@@ -5,7 +5,7 @@ import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 
-from gi.repository import Adw, Gtk, Gdk, Gio, GLib, GObject, Pango
+from gi.repository import Adw, Gtk, Gdk, GLib, GObject
 
 # Optional README renderer for Linux builds with WebKitGTK available.
 try:
@@ -14,10 +14,11 @@ try:
 except Exception:
     WebKit = None
 
-from .backend import Package, BrewBackend
-from .task_manager import Task, TaskStatus, TaskOperation
 from .logging_util import get_logger
 from .screenshot_lightbox import TavernScreenshotLightbox
+from .asset_loader import AssetLoaderController
+from .readme_renderer import ReadmeRenderer
+from .task_binding import PackageTaskBinder
 
 
 _log = get_logger('package_details')
@@ -81,6 +82,10 @@ class TavernPackageDetails(Adw.NavigationPage):
         self._hover_link = None
         self._readme_text = None
         self._readme_webview = None
+        self._asset_loader = AssetLoaderController(self._backend)
+        self._readme_renderer = ReadmeRenderer()
+        self._task_binder = PackageTaskBinder(
+            self._on_task_progress, self._on_task_finished)
 
         self.install_button.connect('clicked', self._on_install_clicked)
         self.remove_button.connect('clicked', self._on_remove_clicked)
@@ -191,8 +196,8 @@ class TavernPackageDetails(Adw.NavigationPage):
 
         # Fetch icon, screenshot, and README
         if self._backend:
-            self._backend.fetch_icon_async(package, self._on_icon_fetched)
-            self._backend.fetch_screenshot_async(package, self._on_screenshot_fetched)
+            self._asset_loader.load(
+                package, self._on_icon_fetched, self._on_screenshot_fetched)
             self._backend.fetch_readme_async(package, self._on_readme_fetched)
             self._backend.get_package_info_async(package, self._on_info_loaded)
             GLib.idle_add(self._load_related_packages)
@@ -361,14 +366,9 @@ class TavernPackageDetails(Adw.NavigationPage):
             package.update_analytics(data.get('analytics'))
         
         # Now update the UI with the fresh installs data (or hide if failed to load)
-        if package.installs_90d > 0:
-            count = package.installs_90d
-            if count >= 1_000_000:
-                formatted = f"{count / 1_000_000:.2f}M"
-            elif count >= 1000:
-                formatted = f"{count / 1000:.2f}K"
-            else:
-                formatted = f"{count:,}"
+        formatted = self._readme_renderer.format_install_count(
+            package.installs_90d)
+        if formatted:
             self.installs_label.set_label(formatted)
             self.installs_stack.set_visible_child_name('label')
             self.installs_row.set_sensitive(True)
@@ -412,20 +412,7 @@ class TavernPackageDetails(Adw.NavigationPage):
             self.readme_bin.set_visible(True)
             return
 
-        # Build a plain-text preview from the first ~6 lines, skipping headings/blanks
-        preview_lines = []
-        for line in text.splitlines():
-            stripped = line.strip()
-            # Skip markdown headings, blank lines, images, badges, horizontal rules
-            if not stripped or stripped.startswith('#') or stripped.startswith('!') or stripped.startswith('---') or stripped.startswith('==='):
-                continue
-            # Strip inline markdown formatting for preview
-            clean = stripped.lstrip('*_>`-').strip()
-            if clean:
-                preview_lines.append(clean)
-            if len(preview_lines) >= 6:
-                break
-        preview_text = '\n'.join(preview_lines) if preview_lines else text[:300]
+        preview_text = self._readme_renderer.preview(text)
         self.readme_preview_label.set_label(preview_text)
         self.readme_preview_box.set_visible(True)
         self.readme_fade_overlay.set_visible(True)
@@ -433,19 +420,9 @@ class TavernPackageDetails(Adw.NavigationPage):
 
     def _readme_base_uri(self):
         """Return a base URI for resolving relative README assets."""
-        if not self._package or not self._package.source_url:
+        if not self._package:
             return None
-
-        # Typical source_url: https://github.com/<owner>/<repo>
-        src = self._package.source_url.rstrip('/')
-        if not src.startswith('https://github.com/'):
-            return None
-
-        parts = src.split('/')
-        if len(parts) < 5:
-            return None
-        owner, repo = parts[3], parts[4]
-        return f'https://raw.githubusercontent.com/{owner}/{repo}/HEAD/'
+        return self._readme_renderer.base_uri(self._package.source_url)
 
     def _render_readme_webview(self, text):
         if WebKit is None:
@@ -476,55 +453,9 @@ class TavernPackageDetails(Adw.NavigationPage):
                 self.readme_preview_box.remove(self.readme_preview_label)
                 self.readme_preview_box.append(self._readme_webview)
 
-            try:
-                import markdown as md
-                html_body = md.markdown(
-                    text,
-                    extensions=['fenced_code', 'tables', 'nl2br'],
-                    output_format='html5',
-                )
-            except Exception:
-                # Fallback if python-markdown is missing or errors.
-                escaped = GLib.markup_escape_text(text)
-                html_body = f'<pre>{escaped}</pre>'
-
-            # Check system dark mode for default colors
             style_manager = Adw.StyleManager.get_default()
-            is_dark = style_manager.get_dark()
-            default_color = '#e4e4e4' if is_dark else '#1c1c1c'
-            default_link = '#78aeed' if is_dark else '#1a5fb4'
-
-            html = f"""
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <style>
-      html, body {{
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        margin: 0;
-        padding: 0;
-        color: {default_color};
-        background: transparent !important;
-        background-color: transparent !important;
-      }}
-      a {{ color: {default_link}; }}
-      img, video {{ max-width: 100%; height: auto; border-radius: 8px; }}
-      pre, code {{ white-space: pre-wrap; word-break: break-word; }}
-
-      @media (prefers-color-scheme: dark) {{
-        body {{ color: #e4e4e4; }}
-        a {{ color: #78aeed; }}
-      }}
-      @media (prefers-color-scheme: light) {{
-        body {{ color: #1c1c1c; }}
-        a {{ color: #1a5fb4; }}
-      }}
-    </style>
-  </head>
-  <body>{html_body}</body>
-</html>
-"""
+            html = self._readme_renderer.html(
+                text, is_dark=style_manager.get_dark())
             self._readme_webview.load_html(html, self._readme_base_uri())
             self.readme_fade_overlay.set_visible(False)
             return True
@@ -551,13 +482,13 @@ class TavernPackageDetails(Adw.NavigationPage):
         self._update_buttons()
         self.detail_progress_bar.set_fraction(0.05)
         self.detail_progress_bar.set_visible(True)
-        task.connect('notify::progress', self._on_task_progress)
-        task.connect('finished', self._on_task_finished)
+        self._task_binder.bind(task)
 
     def _on_task_progress(self, task, pspec):
         self.detail_progress_bar.set_fraction(task.progress)
 
     def _on_task_finished(self, task, success):
+        self._task_binder.unbind()
         _log.info('Detail task finished: %s  success=%s', task.title, success)
         self._task = None
         self.detail_progress_bar.set_fraction(1.0 if success else 0.0)
