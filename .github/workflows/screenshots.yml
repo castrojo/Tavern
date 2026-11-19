@@ -1,24 +1,56 @@
 name: Screenshots
 
-# Photographs the app as it actually ships: installs the published Flatpak
-# from the tuna-os remote and captures that. No build, and the image shows the
-# artifact users install, so a packaging regression surfaces as a broken
-# screenshot rather than only as a bug report.
+# Two independent lanes of Flatpak visual evidence, each bound to the exact
+# artifact it validates, so a screenshot of today's published app can never
+# turn a changed PR candidate green (and vice versa). Issue #315.
+#
+#   published-artifact  Installs the published org.tunaos.tavern Flatpak from
+#                       the tuna-os remote and captures that. The captured
+#                       binary is the remote artifact, NOT the checked-out PR
+#                       source — that provenance is recorded explicitly rather
+#                       than inferred from the checked-out tree.
+#
+#   candidate-build      Builds the Flatpak from the checked-out candidate
+#                       source and uploads the bundle.
+#   candidate-capture    Installs that built bundle and captures it, binding
+#                       the bundle digest to the candidate source and run.
+#
+# Every capture/evidence primitive comes from the shared, version-tracked
+# tuna-os/flatpak-index capture action — nothing is vendored here. The two
+# lanes report independently; a green published capture does not qualify an
+# untested candidate.
 on:
   pull_request:
     paths:
-      - "data/org.tunaos.tavern.metainfo.xml.in"
-      - ".github/workflows/screenshots.yml"
+      - "data/org.tunaos.tavern.metainfo.xml.in"  # packaging / app id / version
+      - "data/**"                                  # icons, resources, desktop, gschema
+      - "src/**"                                   # Python + logic
+      - "*.blp"                                    # Blueprint UI
+      - "meson.build"                              # build graph
+      - ".github/workflows/screenshots.yml"        # the harness itself
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Fresh, per-run output directory for every capture. CI evidence is uploaded
+# as an artifact and never committed, so the committed docs/screenshots/
+# AppStream baseline is only ever changed by a reviewed human commit, and a
+# stale PNG/receipt from another target or run can never be mistaken for this
+# run's evidence.
+env:
+  SCREENSHOTS_RUN_DIR: .screenshots-run/${{ job }}/${{ github.run_id }}-${{ github.run_attempt }}
+  APP_ID: org.tunaos.tavern
+
 jobs:
-  capture:
+  # ------------------------------------------------------------------
+  # Lane 1 — the published artifact (the app exactly as it ships).
+  # ------------------------------------------------------------------
+  published-artifact:
+    name: "Published artifact"
+    runs-on: ubuntu-latest
     # Not a container: Flatpak needs bubblewrap, which wants privileges the
     # job container does not have.
-    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -27,7 +59,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq flatpak
 
-      - name: Install the published app
+      - name: Add remotes and install the published app
         run: |
           # Flathub too: the app's runtime (org.gnome.Platform) lives there,
           # and the tuna-os remote carries only the apps.
@@ -35,23 +67,342 @@ jobs:
             flathub https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak remote-add --user --if-not-exists \
             tuna-os https://tunaos.org/flatpak/tuna-os.flatpakrepo
-          flatpak install --user -y tuna-os org.tunaos.tavern
-          flatpak info --user org.tunaos.tavern
+          flatpak install --user -y tuna-os $APP_ID
 
-      - uses: tuna-os/flatpak-index/.github/actions/capture-screenshots@main
+      - name: Record published-artifact provenance
+        # The installed binary ships from the tuna-os remote, NOT from the
+        # checked-out candidate source. Record the remote identity and the
+        # exact installed artifact; the source binding of the captured binary
+        # to this PR is unknown *by design* and is never inferred from the
+        # checked-out tree (issue #315, acceptance 1).
+        id: meta
+        run: |
+          set -euo pipefail
+          mkdir -p "$SCREENSHOTS_RUN_DIR"
+          APP_COMMIT=$(flatpak info --user --show-commit "$APP_ID" 2>/dev/null || echo unknown)
+          ARCH=$(flatpak info --user --show-arch "$APP_ID" 2>/dev/null || echo unknown)
+          RUNTIME_REF=$(flatpak info --user --show-runtime "$APP_ID" 2>/dev/null || echo unknown)
+          RUNTIME_COMMIT=$(flatpak list --user --columns=app,branch,arch,commit,runtime,runtime-commit \
+            2>/dev/null | awk -v app="$APP_ID" '$1==app {print $7}')
+          RUNTIME_COMMIT=${RUNTIME_COMMIT:-unknown}
+          cat > "$SCREENSHOTS_RUN_DIR/provenance.json" <<EOF
+          {
+            "lane": "published-artifact",
+            "app_id": "$APP_ID",
+            "remote": "tuna-os",
+            "remote_url": "https://tunaos.org/flatpak/tuna-os.flatpakrepo",
+            "installed_ref": "$APP_ID/$ARCH/stable",
+            "app_commit": "$APP_COMMIT",
+            "architecture": "$ARCH",
+            "runtime_ref": "$RUNTIME_REF",
+            "runtime_commit": "$RUNTIME_COMMIT",
+            "source_binding": "published artifact from the tuna-os remote; the checked-out candidate source is NOT built or installed here",
+            "source_binding_status": "unknown",
+            "run_id": "${{ github.run_id }}",
+            "run_attempt": "${{ github.run_attempt }}"
+          }
+          EOF
+
+      - name: Confirm the no-Homebrew scenario
+        # GitHub-hosted runners do not carry Homebrew, so this capture runs in
+        # the explicit no-Homebrew scenario. Record it rather than assuming:
+        # a host that DOES have Homebrew would be a different, unsupported test
+        # configuration (documented in the receipt/environment).
+        run: |
+          set -euo pipefail
+          if command -v brew >/dev/null 2>&1; then
+            echo "runner has Homebrew; this lane targets the no-Homebrew scenario" >&2
+            exit 2
+          fi
+          echo "confirmed: no brew on PATH (no-Homebrew scenario)"
+
+      - name: Capture published window
+        id: capture
+        uses: tuna-os/flatpak-index/.github/actions/capture-screenshots@main
         with:
           # --socket=x11 so the sandbox can see the Xvfb the action started.
-          # Homebrew is absent on the runner, so this shows whatever Tavern
-          # does with no brew present -- which is exactly what needs looking
-          # at before any of it is published.
-          command: flatpak run --user --socket=x11 org.tunaos.tavern
+          # TAVERN_LOG_FILE gives a real semantic readback of app state (see
+          # the readback step below), not just window visibility.
+          command: >-
+            TAVERN_LOG=1 TAVERN_LOG_FILE="$HOME/tavern-published.log"
+            flatpak run --user --socket=x11 $APP_ID
           name: main-window
-          out-dir: docs/screenshots
-          settle: "15"
+          out-dir: ${{ env.SCREENSHOTS_RUN_DIR }}
+          geometry: 1000x700
+          settle: "8"
+          deadline: "60"
+          app-id: $APP_ID
+          capture-mode: window
+          required: "true"
+          # Readiness = the app finished activating (window presented) and is
+          # still alive. Bounded by deadline; a frozen loading screen or a
+          # window that never appears fails the lane.
+          readiness-predicate: >-
+            grep -q "do_activate: completed" "$HOME/tavern-published.log" 2>/dev/null
+          wm-class: org.tunaos.tavern
 
-      # Uploaded for review, deliberately NOT committed by CI. An unreviewed
-      # auto-commit is how a bad capture publishes itself.
-      - uses: actions/upload-artifact@v7.0.2
+      - name: Read back captured app state (no-Homebrew acceptance)
+        # Meaningful readback beyond window visibility: the app ran in a
+        # confirmed no-Homebrew environment and detected it, and reached a
+        # stable window. A missing message or a failed capture fails the lane.
+        if: success() || failure()
+        run: |
+          set -euo pipefail
+          LOG="$HOME/tavern-published.log"
+          if [ ! -f "$LOG" ]; then
+            echo "no application log captured" >&2
+            exit 1
+          fi
+          grep -q "do_activate: completed" "$LOG" \
+            || { echo "app did not complete activation" >&2; exit 1; }
+          grep -q "brew executable not found" "$LOG" \
+            || { echo "app did not detect the expected no-Homebrew state" >&2; exit 1; }
+          echo "readback ok: window presented, no-Homebrew detected"
+
+      - name: Write per-run manifest of produced artifacts
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 - "$SCREENSHOTS_RUN_DIR" <<'PY'
+          import json, sys, hashlib
+          from pathlib import Path
+          out = Path(sys.argv[1])
+          artifacts = []
+          for receipt in sorted(out.glob("*.receipt.json")):
+              try:
+                  data = json.loads(receipt.read_text())
+              except (OSError, ValueError):
+                  data = {}
+              png = receipt.with_suffix(".png")
+              frame_hash = None
+              if png.exists():
+                  frame_hash = hashlib.sha256(png.read_bytes()).hexdigest()
+              artifacts.append({
+                  "image": png.name if png.exists() else None,
+                  "receipt": receipt.name,
+                  "frame_hash": frame_hash,
+                  "outcome": data.get("outcome"),
+                  "scenario": data.get("requested", {}).get("name"),
+              })
+          manifest = {
+              "run_id": __import__("os").environ.get("GITHUB_RUN_ID", "local"),
+              "run_attempt": __import__("os").environ.get("GITHUB_RUN_ATTEMPT", "1"),
+              "artifacts": artifacts,
+          }
+          (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          print(json.dumps(manifest, indent=2))
+          PY
+
+      - name: Upload published capture evidence
+        # Uploaded for review, deliberately NOT committed by CI. An unreviewed
+        # auto-commit is how a bad capture publishes itself. Includes the PNG,
+        # the versioned receipt, the provenance sidecar, the manifest, and the
+        # application log.
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
         with:
-          name: screenshots
-          path: docs/screenshots/
+          name: screenshots-published
+          path: ${{ env.SCREENSHOTS_RUN_DIR }}/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ------------------------------------------------------------------
+  # Lane 2a — build the exact artifact under review (the PR candidate).
+  # ------------------------------------------------------------------
+  candidate-build:
+    name: "Candidate build"
+    runs-on: ubuntu-latest
+    # --privileged is required by flatpak-github-actions itself (bubblewrap
+    # needs it to create sandboxes inside the container; documented as the
+    # standard usage in that action's own README). This job only builds a CI
+    # artifact (no publish/release step), so it needs nothing beyond read
+    # access.
+    permissions:
+      contents: read
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6.8
+        with:
+          bundle: Tavern-candidate.flatpak
+          manifest-path: org.tunaos.tavern.json
+          cache-key: flatpak-builder-${{ github.sha }}
+
+      - name: Record candidate provenance (bind bundle digest to source + run)
+        id: meta
+        run: |
+          set -euo pipefail
+          mkdir -p "$SCREENSHOTS_RUN_DIR"
+          BUNDLE=Tavern-candidate.flatpak
+          BUNDLE_SHA256=$(sha256sum "$BUNDLE" | awk '{print $1}')
+          cat > "$SCREENSHOTS_RUN_DIR/provenance.json" <<EOF
+          {
+            "lane": "candidate-artifact",
+            "app_id": "$APP_ID",
+            "source_binding": "built from the checked-out candidate source (this PR)",
+            "source_binding_status": "verified",
+            "source_revision": "${{ github.sha }}",
+            "run_id": "${{ github.run_id }}",
+            "run_attempt": "${{ github.run_attempt }}",
+            "bundle_file": "$BUNDLE",
+            "bundle_sha256": "$BUNDLE_SHA256"
+          }
+          EOF
+
+      - name: Upload candidate bundle + provenance
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: Tavern-candidate-flatpak
+          path: |
+            Tavern-candidate.flatpak
+            ${{ env.SCREENSHOTS_RUN_DIR }}/provenance.json
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ------------------------------------------------------------------
+  # Lane 2b — capture the exact build under review.
+  # ------------------------------------------------------------------
+  candidate-capture:
+    name: "Candidate capture"
+    needs: candidate-build
+    runs-on: ubuntu-latest
+    # Not a container: Flatpak needs bubblewrap, which wants privileges the
+    # job container does not have.
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install Flatpak + the runtime the built bundle runs against
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq flatpak
+          flatpak remote-add --user --if-not-exists \
+            flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          # The bundle carries the app only; the org.gnome.Platform//50 runtime
+          # lives on Flathub.
+          flatpak install --user -y flathub org.gnome.Platform//50
+
+      - name: Download the candidate bundle built from this PR
+        uses: actions/download-artifact@v4
+        with:
+          name: Tavern-candidate-flatpak
+          path: .candidate
+
+      - name: Record candidate provenance (bundle digest bound to source + run)
+        id: meta
+        run: |
+          set -euo pipefail
+          mkdir -p "$SCREENSHOTS_RUN_DIR"
+          BUNDLE=.candidate/Tavern-candidate.flatpak
+          BUNDLE_SHA256=$(sha256sum "$BUNDLE" | awk '{print $1}')
+          cat > "$SCREENSHOTS_RUN_DIR/provenance.json" <<EOF
+          {
+            "lane": "candidate-artifact",
+            "app_id": "$APP_ID",
+            "source_binding": "built from the checked-out candidate source (this PR)",
+            "source_binding_status": "verified",
+            "source_revision": "${{ github.sha }}",
+            "run_id": "${{ github.run_id }}",
+            "run_attempt": "${{ github.run_attempt }}",
+            "bundle_file": "Tavern-candidate.flatpak",
+            "bundle_sha256": "$BUNDLE_SHA256"
+          }
+          EOF
+
+      - name: Write a deterministic populated fixture Brewfile
+        # A fixed Brewfile makes the scenario reproducible regardless of the
+        # host's Homebrew state: the brewfile page shows the declared packages
+        # immediately (details load async), a populated fixture distinct from
+        # the default empty window.
+        run: |
+          mkdir -p "$SCREENSHOTS_RUN_DIR"
+          cat > "$HOME/tavern-capture-fix.Brewfile" <<'EOF'
+          tap "homebrew/core"
+          tap "homebrew/cask"
+          brew "git"
+          brew "wget"
+          EOF
+
+      - name: Capture candidate window
+        id: capture
+        uses: tuna-os/flatpak-index/.github/actions/capture-screenshots@main
+        with:
+          # Install and run the exact bundle this PR built — never the published
+          # version — so a packaging regression in the candidate is what is
+          # photographed. --brewfile loads the deterministic populated fixture.
+          command: >-
+            TAVERN_LOG=1 TAVERN_LOG_FILE="$HOME/tavern-candidate.log"
+            flatpak install --user --force-registry -y ".candidate/Tavern-candidate.flatpak"
+            && flatpak run --user --socket=x11 $APP_ID --brewfile "$HOME/tavern-capture-fix.Brewfile"
+          name: candidate-main-window
+          out-dir: ${{ env.SCREENSHOTS_RUN_DIR }}
+          geometry: 1000x700
+          settle: "10"
+          deadline: "90"
+          app-id: $APP_ID
+          capture-mode: window
+          required: "true"
+          # Readiness = the brewfile fixture finished loading (populated state),
+          # bounded by deadline. A frozen loading/error screen fails the lane.
+          readiness-predicate: >-
+            grep -q "TOTAL BREWFILE LOAD TIME" "$HOME/tavern-candidate.log" 2>/dev/null
+          wm-class: org.tunaos.tavern
+
+      - name: Read back captured candidate state
+        if: success() || failure()
+        run: |
+          set -euo pipefail
+          LOG="$HOME/tavern-candidate.log"
+          if [ ! -f "$LOG" ]; then
+            echo "no application log captured" >&2
+            exit 1
+          fi
+          grep -q "TOTAL BREWFILE LOAD TIME" "$LOG" \
+            || { echo "fixture brewfile did not load" >&2; exit 1; }
+          echo "readback ok: candidate fixture populated"
+
+      - name: Write per-run manifest of produced artifacts
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 - "$SCREENSHOTS_RUN_DIR" <<'PY'
+          import json, sys, hashlib
+          from pathlib import Path
+          out = Path(sys.argv[1])
+          artifacts = []
+          for receipt in sorted(out.glob("*.receipt.json")):
+              try:
+                  data = json.loads(receipt.read_text())
+              except (OSError, ValueError):
+                  data = {}
+              png = receipt.with_suffix(".png")
+              frame_hash = None
+              if png.exists():
+                  frame_hash = hashlib.sha256(png.read_bytes()).hexdigest()
+              artifacts.append({
+                  "image": png.name if png.exists() else None,
+                  "receipt": receipt.name,
+                  "frame_hash": frame_hash,
+                  "outcome": data.get("outcome"),
+                  "scenario": data.get("requested", {}).get("name"),
+              })
+          manifest = {
+              "run_id": __import__("os").environ.get("GITHUB_RUN_ID", "local"),
+              "run_attempt": __import__("os").environ.get("GITHUB_RUN_ATTEMPT", "1"),
+              "artifacts": artifacts,
+          }
+          (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          print(json.dumps(manifest, indent=2))
+          PY
+
+      - name: Upload candidate capture evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: screenshots-candidate
+          path: ${{ env.SCREENSHOTS_RUN_DIR }}/
+          retention-days: 30
+          if-no-files-found: warn
